@@ -1,0 +1,53 @@
+{
+  "passport_version": "1.0",
+  "vector_id": "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
+  "source": {
+    "uri": "s3://company-docs/q3-financial-report.pdf",
+    "hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "last_modified": "2026-05-07T09:14:22Z",
+    "mime_type": "application/pdf",
+    "size_bytes": 2481932
+  },
+  "chunk": {
+    "id": "page-8-char-1247-1873",
+    "strategy": "recursive-character-512-50@1.0.0",
+    "unit": "character",
+    "start": 1247,
+    "end": 1873,
+    "page": 8,
+    "hash": "sha256:44d88612fea8a8f36de82e1278abb02f",
+    "metadata": {
+      "section": "Financial Performance",
+      "heading": "Q3 Revenue Summary"
+    }
+  },
+  "embedding": {
+    "model": "nomic-embed-text-v1.5",
+    "model_version": "1.5.0",
+    "provider": "nomic-ai",
+    "dimension": 768,
+    "parameters": {
+      "normalize": true,
+      "pooling": "mean"
+    }
+  },
+  "created_at": "2026-05-08T14:22:05Z",
+  "created_by": "data-ingestion-pipeline@company.com",
+  "staleness": {
+    "status": "current",
+    "checked_at": "2026-05-08T14:22:05Z"
+  },
+  "vector_hash": "sha256:7c4a8d09ca3762af61e59520943dc26494f8941b",
+  "modality": "text",
+  "lineage": [
+    {
+      "event": "initial_creation",
+      "timestamp": "2026-05-08T14:22:05Z",
+      "details": {
+        "pipeline_version": "2.3.0"
+      }
+    }
+  ],
+  "signature": null,
+  "extensions": {}
+}

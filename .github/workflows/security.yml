@@ -1,0 +1,107 @@
+name: Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run every Monday at 05:00 UTC.
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    name: Bandit (Python Security Linting)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: python -m pip install "bandit[toml]"
+
+      - name: Run Bandit
+        id: bandit
+        continue-on-error: true
+        run: |
+          bandit -r vector_passport.py validate_passport.py implementations/python \
+            examples/demo.py examples/model_upgrade_demo.py examples/source_change_detection_demo.py examples/qdrant_integration.py examples/lancedb_integration.py \
+            --severity-level medium \
+            --confidence-level medium \
+            --format json \
+            --output bandit-results.json
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('bandit-results.json') != ''
+        with:
+          name: bandit-results
+          path: bandit-results.json
+
+      - name: Fail on Bandit findings
+        if: steps.bandit.outcome == 'failure'
+        run: exit 1
+
+  pip-audit:
+    name: pip-audit (Dependency Vulnerabilities)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install pip-audit
+        run: python -m pip install pip-audit
+
+      - name: Run pip-audit
+        id: pip-audit
+        continue-on-error: true
+        run: |
+          pip-audit \
+            --requirement requirements.txt \
+            --format json \
+            --output pip-audit-results.json
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('pip-audit-results.json') != ''
+        with:
+          name: pip-audit-results
+          path: pip-audit-results.json
+
+      - name: Fail on pip-audit findings
+        if: steps.pip-audit.outcome == 'failure'
+        run: exit 1
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4

@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: python -m pip install ruff
+
+      - name: Lint Python files
+        run: ruff check vector_passport.py validate_passport.py implementations/python/vector_passport.py examples/demo.py examples/model_upgrade_demo.py examples/source_change_detection_demo.py examples/qdrant_integration.py examples/lancedb_integration.py
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Show CLI help
+        run: |
+          python vector_passport.py --help
+          python validate_passport.py --help
+
+      - name: Validate bundled example passport
+        run: |
+          python validate_passport.py --self-test
+          python validate_passport.py examples/sample-passport.json
+          python vector_passport.py validate examples/sample-passport.json
+
+      - name: Run practical demo
+        run: |
+          python examples/demo.py
+          python examples/model_upgrade_demo.py
+          python examples/source_change_detection_demo.py
+          python examples/qdrant_integration.py
+          python examples/lancedb_integration.py
+
+      - name: Dry-run create from file
+        run: |
+          echo '[0.1, 0.2, 0.3, 0.4]' > /tmp/vector.json
+          python vector_passport.py create \
+            --source-uri "s3://test-bucket/sample.pdf" \
+            --source-file README.md \
+            --chunk-start 0 \
+            --chunk-end 120 \
+            --model "nomic-embed-text-v1.5" \
+            --dimension 4 \
+            --vector-file /tmp/vector.json \
+            --dry-run
+
+      - name: Dry-run create from stdin
+        run: |
+          echo '[0.5, 0.6, 0.7, 0.8]' | python vector_passport.py create \
+            --source-uri "s3://test-bucket/sample2.pdf" \
+            --source-file README.md \
+            --chunk-start 10 \
+            --chunk-end 80 \
+            --model "nomic-embed-text-v1.5" \
+            --dimension 4 \
+            --vector-stdin \
+            --dry-run
+
+      - name: Validate generated passport
+        run: |
+          echo '[0.9, 1.0, 1.1]' > /tmp/v.json
+          python vector_passport.py create \
+            --source-uri "file://test.pdf" \
+            --source-file README.md \
+            --chunk-start 0 \
+            --chunk-end 50 \
+            --model "test-model" \
+            --dimension 3 \
+            --vector-file /tmp/v.json \
+            --output /tmp/test-passport.json
+          python vector_passport.py validate /tmp/test-passport.json
+
+      - name: Validate folder of generated passports
+        run: |
+          mkdir -p /tmp/passports
+          echo '[0.1, 0.2, 0.3]' > /tmp/folder-vector.json
+          python vector_passport.py create \
+            --source-uri "file://folder-test.pdf" \
+            --source-file README.md \
+            --chunk-start 0 \
+            --chunk-end 75 \
+            --model "folder-test-model" \
+            --dimension 3 \
+            --vector-file /tmp/folder-vector.json \
+            --output /tmp/passports/folder-test-passport.json
+          python vector_passport.py validate-folder /tmp/passports
+
+      - name: Sign and verify generated passport
+        run: |
+          python vector_passport.py generate-keypair \
+            --private-key /tmp/private_key.pem \
+            --public-key /tmp/public_key.pem
+          echo '[0.2, 0.4, 0.6]' > /tmp/sign-vector.json
+          python vector_passport.py create \
+            --source-uri "file://signed-test.pdf" \
+            --source-file README.md \
+            --chunk-start 2 \
+            --chunk-end 90 \
+            --model "signed-test-model" \
+            --dimension 3 \
+            --vector-file /tmp/sign-vector.json \
+            --sign \
+            --private-key /tmp/private_key.pem \
+            --output /tmp/signed-passport.json
+          python vector_passport.py validate /tmp/signed-passport.json
+          python vector_passport.py verify-signature /tmp/signed-passport.json --public-key /tmp/public_key.pem
+
+      - name: Compile Python files
+        run: python -m py_compile vector_passport.py validate_passport.py implementations/python/vector_passport.py examples/demo.py examples/model_upgrade_demo.py examples/source_change_detection_demo.py examples/qdrant_integration.py examples/lancedb_integration.py

@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vectorpassport.org/schema/v1.0/schema.json",
+  "title": "Vector Passport",
+  "description": "An open metadata standard for self-describing, traceable, portable embedding vectors.",
+  "type": "object",
+  "required": [
+    "passport_version",
+    "vector_id",
+    "source",
+    "chunk",
+    "embedding",
+    "created_at"
+  ],
+  "properties": {
+    "passport_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Version of the Vector Passport specification."
+    },
+    "vector_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this vector."
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "uri",
+        "hash"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Location or stable identifier for the original source object."
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+:[A-Za-z0-9+/=_-]+$",
+          "description": "Content hash of the source object when the vector was created, prefixed by algorithm."
+        },
+        "last_modified": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Observed source modification timestamp when the vector was created."
+        },
+        "mime_type": {
+          "type": "string",
+          "description": "MIME type of the source object."
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Size of the source object in bytes."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional source-level metadata."
+        }
+      },
+      "additionalProperties": false
+    },
+    "chunk": {
+      "type": "object",
+      "required": [
+        "strategy"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable identifier for the chunk within the source."
+        },
+        "strategy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name and optional version of the chunking strategy used."
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "byte",
+            "character",
+            "token",
+            "page",
+            "time",
+            "pixel",
+            "frame",
+            "region",
+            "other"
+          ],
+          "description": "Unit used by start and end offsets."
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Inclusive chunk start offset in the chosen unit."
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Exclusive chunk end offset in the chosen unit."
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Page number for paged documents."
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+:[A-Za-z0-9+/=_-]+$",
+          "description": "Hash of the exact chunk payload represented by the vector."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional chunk-specific metadata such as heading, speaker, slide, bounding box, or section."
+        }
+      },
+      "additionalProperties": false
+    },
+    "embedding": {
+      "type": "object",
+      "required": [
+        "model",
+        "dimension"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Embedding model name."
+        },
+        "model_version": {
+          "type": "string",
+          "description": "Exact model version, revision, or release identifier."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Model provider or publisher."
+        },
+        "dimension": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Dimensionality of the vector."
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Model-specific embedding parameters."
+        }
+      },
+      "additionalProperties": false
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when this vector was generated."
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Pipeline, service, user, or process that created the vector."
+    },
+    "staleness": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "current",
+            "stale",
+            "source_missing",
+            "unchecked",
+            "superseded"
+          ]
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "vector_hash": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+:[A-Za-z0-9+/=_-]+$",
+      "description": "Hash of the vector values for integrity checking."
+    },
+    "modality": {
+      "type": "string",
+      "enum": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "multimodal",
+        "other"
+      ],
+      "description": "Type of content represented by the vector."
+    },
+    "lineage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "event",
+          "timestamp"
+        ],
+        "properties": {
+          "event": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "History of relevant vector lifecycle events."
+    },
+    "signature": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional cryptographic signature over canonical passport content."
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Vendor, project, or deployment-specific extension fields."
+    }
+  },
+  "additionalProperties": false
+}

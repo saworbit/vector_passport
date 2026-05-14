@@ -122,13 +122,13 @@ The passport is not the whole product. It is the shared metadata layer that make
 
 The passports themselves are metadata. The value comes from systems that consume them.
 
-High-value next builds:
-
-- **Vector lifecycle manager**: scans passports and decides what should be refreshed, verified, superseded, or deleted.
-- **Portable RAG ingestion framework**: emits standard passports regardless of source storage or vector database.
-- **Embedding model upgrade assistant**: analyzes passports and recommends what is worth re-embedding.
-- **Vector database migration tool**: exports vectors plus passports and imports them into another backend.
-- **Framework adapters**: integrations for LangChain, LlamaIndex, Haystack, and similar systems.
+| Build | What It Does | Passport Fields It Uses |
+| --- | --- | --- |
+| **Vector lifecycle manager** | Scans passports and decides what should be refreshed, verified, superseded, or deleted. | `staleness`, `source.hash`, `lineage`, `created_at` |
+| **Portable RAG ingestion framework** | Emits standard passports regardless of source storage or vector database. | All core fields |
+| **Embedding model upgrade assistant** | Analyzes passports and recommends what is worth re-embedding. | `embedding.model`, `embedding.model_version`, `staleness` |
+| **Vector database migration tool** | Exports vectors plus passports and imports them into another backend. | All core fields, `extensions` |
+| **Framework adapters** | Integrations for LangChain, LlamaIndex, Haystack, and similar systems. | All core fields |
 
 ## Honest Assessment
 
@@ -143,7 +143,5 @@ I cannot afford to blindly re-embed everything.
 I also cannot lose provenance, auditability, or source traceability.
 ```
 
-Vector Passport exists to solve that problem.
-
-It turns vectors from throwaway technical artifacts into managed, portable, auditable data assets.
+Vector Passport exists to solve that problem. It turns vectors from throwaway technical artifacts into managed, portable, auditable data assets.
 

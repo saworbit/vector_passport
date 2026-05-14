@@ -10,6 +10,10 @@ This solves one of the biggest practical problems in production RAG and semantic
 
 This repository also includes a reference CLI implementation and practical demos.
 
+---
+
+**Contents:** [Why It Exists](#why-it-exists) · [What It Enables](#what-it-enables) · [Features](#features) · [Installation](#installation) · [Quick Start](#quick-start) · [Vector Database Integration](#vector-database-integration) · [Schema](#schema) · [Staleness Detection](#staleness-detection) · [Security And Privacy](#security-and-privacy)
+
 ## Why It Exists
 
 Today, vectors are often stored as lists of numbers plus inconsistent ad hoc metadata. When you move between vector databases, upgrade embedding models, change chunking strategies, or migrate storage systems, you can lose the context needed to safely reuse what you already have.
@@ -378,46 +382,21 @@ Key fields include:
 - `signature`: optional ECDSA signature
 - `extensions`: vendor or project-specific metadata
 
-## What Should Be Standardized
+## Design Principles
 
-Vector Passport standardizes the metadata and tracking contract:
+| Principle | Details |
+| --- | --- |
+| **Open** | Apache 2.0 license. No vendor lock-in. |
+| **Portable** | Works across storage systems, vector databases, and retrieval stacks. |
+| **Minimal** | Small JSON payload, typically under 1 KB. |
+| **Extensible** | `extensions` object for vendor-specific or project-specific data. |
+| **Auditable** | Every vector can trace back to its exact source, chunk, and model. |
+| **Future-proof** | `passport_version` and `lineage` support evolution over time. |
+| **Model-neutral** | Works with any embedding model and any chunking strategy. |
 
-- source provenance
-- chunk identity and location
-- embedding model metadata
-- timestamps
-- hashes
-- staleness state
-- lineage events
-- optional tamper-evidence
-- extension points
+**What Vector Passport standardizes:** source provenance, chunk identity and location, embedding model metadata, timestamps, content hashes, staleness state, lineage events, optional tamper-evidence, and extension points. This is the stable layer that makes vectors understandable across tools.
 
-This is the stable layer that makes vectors understandable across tools.
-
-## What Should Not Be Standardized
-
-Vector Passport does not standardize:
-
-- the actual chunking rules
-- the embedding model
-- the vector database
-- the storage backend
-- the retrieval framework
-- the application ranking strategy
-
-Different documents need different chunking. A legal contract, PowerPoint deck, video, support ticket, scanned form, and transcript all have different structural boundaries.
-
-Embedding models also move quickly. A standard that forces one model or one chunking method would become obsolete and would slow progress.
-
-## Design Goals
-
-- **Open**: Apache 2.0 license. No vendor lock-in.
-- **Portable**: Works across storage systems, vector databases, and retrieval stacks.
-- **Minimal**: Small JSON payload, typically under 1 KB.
-- **Extensible**: `extensions` object for vendor-specific data.
-- **Auditable**: Every vector can point back to its source.
-- **Future-proof**: `passport_version` and `lineage` allow evolution over time.
-- **Model-neutral**: Works with any embedding model.
+**What Vector Passport does not standardize:** the actual chunking rules, the embedding model, the vector database, the storage backend, the retrieval framework, or the application ranking strategy. Different documents need different chunking, and embedding models move quickly. A standard that forces one model or one chunking method would become obsolete.
 
 ## Staleness Detection
 
@@ -475,23 +454,15 @@ Implementations should consider:
 
 ## Governance
 
-This is an early-stage open standard. A practical path forward:
-
-- publish the specification in a public repository
-- use semantic versioning
-- maintain a JSON Schema for each released version
-- provide reference implementations in Python, TypeScript, and Go
-- require compatibility tests for schema changes
-- keep vendor extensions under `extensions`
-- publish examples for text, image, audio, video, and multimodal use cases
+Vector Passport is an early-stage open standard. The specification uses semantic versioning, with the authoritative JSON Schema maintained for each released version. Vendor-specific or project-specific fields belong under `extensions`, keeping the core schema stable. See [SPEC.md § 9](SPEC.md#9-schema-evolution-and-versioning-strategies) for detailed evolution and versioning guidance, and [CONTRIBUTING.md](CONTRIBUTING.md) for the proposal checklist.
 
 ## License
 
-Apache License 2.0.
+Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Feedback, schema improvements, adapters for vector databases, and additional language implementations are welcome.
+Feedback, schema improvements, vector database adapters, and additional language implementations are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 If you want to help shape portable vector metadata, open an issue or pull request.
 

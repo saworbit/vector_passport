@@ -136,61 +136,141 @@ Lineage should be append-only where practical.
 
 ## 5. JSON Schema
 
-The authoritative JSON Schema for v1.0 is:
+The authoritative JSON Schema for v1.0 is located at:
 
-```text
-spec/v1.0/schema.json
-```
-
-The planned hosted schema URL is:
-
-```text
-https://vectorpassport.org/schema/v1.0
-```
+- **Repository path:** [spec/v1.0/schema.json](spec/v1.0/schema.json)
+- **Planned hosted URL:** `https://vectorpassport.org/schema/v1.0`
 
 Implementations should validate passports against the JSON Schema when creating, importing, exporting, or migrating vectors.
+
+**When to validate:**
+
+| Operation | Validation Guidance |
+| --- | --- |
+| Creating a new passport | Validate before storing. Reject invalid passports at the source. |
+| Importing from another system | Validate on import. Log or quarantine passports that fail validation. |
+| Exporting to another system | Validate before export to avoid propagating invalid data. |
+| Migrating between schema versions | Validate against both the source and target schemas during migration. |
+| Reading in application code | Validate if the passport source is untrusted. Skip if the pipeline guarantees schema compliance. |
 
 ## 6. Recommended Workflows
 
 ### 6.1 Creation Workflow
 
-```mermaid
-flowchart TD
-    A[Source Object] --> B[Extract Content]
-    B --> C[Chunking Strategy]
-    C --> D[Generate Embedding]
-    D --> E[Create Vector Passport]
-    E --> F[Optional Signature]
-    F --> G[Store Vector + Passport]
+Creating a vector with a passport follows these steps:
+
 ```
+Source Object
+  │
+  ▼
+Extract Content ─── read the source file and compute source.hash
+  │
+  ▼
+Chunking Strategy ── split content into chunks, record strategy and offsets
+  │
+  ▼
+Generate Embedding ─ pass chunk text to the embedding model
+  │
+  ▼
+Create Passport ──── assemble passport with source, chunk, embedding,
+  │                   staleness, lineage, and vector_hash fields
+  ▼
+Optional Signature ─ sign the canonical passport with ECDSA if required
+  │
+  ▼
+Store ──────────────  persist the vector and passport together
+```
+
+**Minimum required actions:**
+
+1. **Hash the source.** Read the source object and compute a content hash (e.g. `sha256:...`). Store it in `source.hash`.
+2. **Record the chunk.** Capture the chunking strategy name, unit, start offset, and end offset.
+3. **Embed.** Generate the embedding vector. Record the model name and dimension.
+4. **Compute vector hash.** Hash the raw embedding values and store the result in `vector_hash`.
+5. **Assemble the passport.** Populate all required fields: `passport_version`, `vector_id`, `source`, `chunk`, `embedding`, and `created_at`.
+6. **Append a lineage event.** Add an `initial_creation` event with the current timestamp.
+7. **Sign (optional).** If tamper evidence is needed, sign the canonical passport JSON (with `signature` set to `null`) using ECDSA and store the result in `signature`.
+8. **Store together.** Persist the vector and its passport in the same record, payload, or metadata layer.
 
 ### 6.2 Staleness Detection Workflow
 
-```mermaid
-flowchart TD
-    A[Existing Vector + Passport] --> B[Read source.hash]
-    B --> C[Recompute current source hash]
-    C --> D{Hashes Match?}
-    D -->|Yes| E[Vector is Fresh]
-    D -->|No| F[Mark Stale]
-    F --> G[Re-embed Affected Chunks]
+Staleness detection determines whether an existing vector still reflects its source:
+
 ```
+Existing Vector + Passport
+  │
+  ▼
+Read source.hash from the passport
+  │
+  ▼
+Fetch the current source object and recompute its hash
+  │
+  ▼
+Compare hashes
+  │
+  ├── Match ──────► Vector is current ── set staleness.status = "current"
+  │
+  └── Mismatch ──► Vector is stale ──── set staleness.status = "stale"
+                     │
+                     ▼
+                   Re-embed affected chunks
+                     │
+                     ▼
+                   Append lineage events ("marked_stale", "reembedded")
+```
+
+**Steps in detail:**
+
+1. **Read stored hash.** Extract `source.hash` from the passport.
+2. **Recompute current hash.** Fetch the source object at `source.uri` and compute its content hash using the same algorithm.
+3. **Compare.** If the hashes match, the vector is still current. Update `staleness.status` to `"current"` and `staleness.checked_at` to the current timestamp.
+4. **Handle mismatch.** If the hashes differ:
+   - Set `staleness.status` to `"stale"` and `staleness.reason` to a human-readable explanation.
+   - Append a `marked_stale` lineage event.
+   - Re-embed the affected chunk using the current embedding model.
+   - Create a new passport for the re-embedded vector and append a `reembedded` lineage event.
+5. **Handle missing source.** If the source object cannot be found, set `staleness.status` to `"source_missing"`.
+
+For large corpora, chunk-level hashes (`chunk.hash`) allow finer detection: only chunks whose content actually changed need re-embedding, even if the parent document changed.
 
 ### 6.3 Model Upgrade Workflow
 
-1. A new embedding model is released.
-2. The system scans existing passports.
-3. It identifies vectors where:
-   - the source file has changed,
-   - the current embedding model differs from the target model,
-   - the chunk or use case is high priority,
-   - the prior vector is superseded or stale.
-4. It re-embeds only the subset that needs it.
-5. It updates `lineage` and staleness metadata.
+Model upgrades re-embed vectors to take advantage of a newer or better embedding model:
+
+```
+New model available
+  │
+  ▼
+Scan existing passports
+  │
+  ▼
+Filter candidates ── source changed? old model? high priority? stale?
+  │
+  ├── Must re-embed ──► re-embed now, update passport + lineage
+  │
+  ├── Should re-embed ► schedule for quality improvement
+  │
+  └── Skip ───────────► keep existing vector
+```
+
+**Steps in detail:**
+
+1. **Announce target model.** Define the new embedding model name, version, and any changed parameters.
+2. **Scan passports.** Query or iterate over existing passports and read `embedding.model`, `embedding.model_version`, and `staleness.status`.
+3. **Classify each vector.** For each passport, decide whether re-embedding is required, recommended, or unnecessary:
+   - **Must re-embed:** source has changed (`staleness.status` is `"stale"` or `"source_missing"`), or the vector is marked `"superseded"`.
+   - **Should re-embed:** the embedding model differs from the target model and the chunk is high priority or frequently retrieved.
+   - **Skip:** the source is unchanged, the current model is acceptable, and the vector is still `"current"`.
+4. **Re-embed the subset.** For each vector that needs re-embedding, generate a new vector with the target model and create a new passport.
+5. **Update lineage.** Append a `model_upgraded` event recording the old model, new model, and timestamp. If the old vector is retained, set its `staleness.status` to `"superseded"`.
+
+This approach avoids the cost of blindly re-embedding an entire vector estate when only a fraction of vectors actually benefit from the new model.
 
 ### 6.4 Vector Database Integration
 
-Store the passport alongside the vector in the vector database metadata or payload layer:
+Store the passport alongside the vector in the vector database metadata or payload layer. Most modern vector databases (Qdrant, Chroma, Weaviate, LanceDB, Milvus, Pinecone, and others) support attaching JSON metadata to each vector.
+
+**Nested JSON pattern** (passport as a structured object inside the payload):
 
 ```json
 {
@@ -200,20 +280,55 @@ Store the passport alongside the vector in the vector database metadata or paylo
     "text": "Our revenue grew 27%...",
     "passport": {
       "passport_version": "1.0",
+      "vector_id": "vec-abc-001",
       "source": {
         "uri": "s3://company-docs/q3-report.pdf",
-        "hash": "sha256:..."
+        "hash": "sha256:a1b2c3..."
+      },
+      "chunk": {
+        "strategy": "recursive-character-512-50@1.0.0",
+        "start": 1247,
+        "end": 1873
       },
       "embedding": {
         "model": "nomic-embed-text-v1.5",
         "dimension": 768
+      },
+      "created_at": "2026-05-08T14:22:05Z",
+      "staleness": {
+        "status": "current",
+        "checked_at": "2026-05-08T14:22:05Z"
       }
     }
   }
 }
 ```
 
-Some systems may store the passport as nested JSON. Others may store it as a JSON string plus selected indexed columns. Both patterns are valid as long as the passport can be recovered and validated.
+**Flattened pattern** (passport stored as a JSON string plus selected indexed columns):
+
+```json
+{
+  "id": "vector-id",
+  "vector": [0.0123, -0.0456, 0.0789],
+  "payload": {
+    "text": "Our revenue grew 27%...",
+    "passport_json": "{...}",
+    "passport_model": "nomic-embed-text-v1.5",
+    "passport_source_hash": "sha256:a1b2c3...",
+    "passport_staleness": "current"
+  }
+}
+```
+
+Both patterns are valid as long as the full passport can be recovered and validated. The nested pattern preserves structure and is easier to query. The flattened pattern is useful when the database supports filtering on top-level payload fields but not nested objects.
+
+**Integration checklist:**
+
+- Store the complete passport, not just selected fields. Partial passports lose portability.
+- Index `embedding.model` if you need to filter vectors by model during upgrades.
+- Index `staleness.status` if you run automated freshness checks.
+- Index `source.hash` if you compare against current source hashes at query time.
+- Preserve `extensions` during import and export, even if your system does not use them.
 
 ## 7. Use Cases
 
@@ -415,28 +530,41 @@ Breaking changes require strong justification and broad consensus. The specifica
 
 ## 10. Governance
 
-This specification is maintained as an open standard.
+This specification is maintained as an open standard under the Apache 2.0 license.
 
-- License: Apache 2.0
-- Contributions: pull requests and issues
-- Compatibility: schema changes should include examples and migration notes
-- Reference artifacts:
-  - [spec/v1.0/schema.json](spec/v1.0/schema.json)
-  - [examples/sample-passport.json](examples/sample-passport.json)
-  - [vector_passport.py](vector_passport.py)
+**Contribution process:**
 
-Breaking changes require clear justification and migration guidance.
+- Schema changes, new fields, and specification clarifications are proposed through pull requests and issues.
+- Each proposal should follow the checklist described in Section 9.8.
+- Breaking changes require strong justification, broad consensus, and migration guidance.
+
+**Reference artifacts:**
+
+| Artifact | Path | Description |
+| --- | --- | --- |
+| JSON Schema | [spec/v1.0/schema.json](spec/v1.0/schema.json) | Authoritative machine-readable schema for v1.0 |
+| Example Passport | [examples/sample-passport.json](examples/sample-passport.json) | Complete example passport with all fields populated |
+| Reference CLI | [vector_passport.py](vector_passport.py) | Python CLI for creating, validating, signing, and verifying passports |
+| Contributing Guide | [CONTRIBUTING.md](CONTRIBUTING.md) | Guidelines for proposing changes to the specification |
 
 ## Appendix A: Example Passport
 
-See [examples/sample-passport.json](examples/sample-passport.json).
+A complete example passport with all fields populated is available at [examples/sample-passport.json](examples/sample-passport.json).
+
+The example demonstrates a text-modality vector from a PDF source with character-based chunk offsets, an `initial_creation` lineage event, and a `current` staleness status.
 
 ## Appendix B: Reference Demos
 
-- [examples/demo.py](examples/demo.py): end-to-end lifecycle
-- [examples/model_upgrade_demo.py](examples/model_upgrade_demo.py): model upgrade analysis
-- [examples/source_change_detection_demo.py](examples/source_change_detection_demo.py): source-change detection
-- [examples/qdrant_integration.py](examples/qdrant_integration.py): Qdrant integration
-- [examples/lancedb_integration.py](examples/lancedb_integration.py): LanceDB integration
+The following demos show Vector Passport workflows end to end. Each can be run independently.
+
+| Demo | Path | What It Shows |
+| --- | --- | --- |
+| End-to-end lifecycle | [examples/demo.py](examples/demo.py) | Creates a passport, signs it with ECDSA, validates against the schema, verifies the signature, and prints the result. |
+| Model upgrade analysis | [examples/model_upgrade_demo.py](examples/model_upgrade_demo.py) | Simulates upgrading from one embedding model to another and recommends which vectors to re-embed. |
+| Source-change detection | [examples/source_change_detection_demo.py](examples/source_change_detection_demo.py) | Compares stored `source.hash` values against current source hashes to identify stale vectors. |
+| Qdrant integration | [examples/qdrant_integration.py](examples/qdrant_integration.py) | Stores passports as Qdrant payload metadata, filters by model, and detects stale vectors. |
+| LanceDB integration | [examples/lancedb_integration.py](examples/lancedb_integration.py) | Stores passports in LanceDB table metadata for filtering and stale-vector detection. |
+
+---
 
 This document, together with [spec/v1.0/schema.json](spec/v1.0/schema.json), constitutes the Vector Passport v1.0 draft specification.

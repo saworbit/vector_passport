@@ -145,3 +145,36 @@ I also cannot lose provenance, auditability, or source traceability.
 
 Vector Passport exists to solve that problem. It turns vectors from throwaway technical artifacts into managed, portable, auditable data assets.
 
+## Future State And Known Gaps
+
+### Language Ecosystem
+
+The reference implementation and CLI are currently 100% Python. While Python is excellent for prototyping and data science workflows, bulk vector migrations and massive dataset tracking will eventually hit performance bottlenecks. Expanding the implementation to memory-safe, highly concurrent languages like Rust or Go would significantly boost viability for large-scale production use.
+
+### Integration Layer And The Path To Native Adoption
+
+The true endgame for Vector Passport is native adoption by vector database vendors. The goal is to hand a `.json` passport directly to the ingestion API of Milvus, Pinecone, or Weaviate and have the database inherently understand how to parse the lineage, verify the hash, and handle staleness checks server-side.
+
+Getting there requires solving the cold start problem that every new standard faces. It is a classic chicken-and-egg dilemma:
+
+- Vector databases will not build native support for a standard unless there is massive developer demand.
+- Developers will not use a standard if they have to write heavy custom logic to fit it into their database of choice.
+
+This is why reference implementations and lightweight adapters matter in the short term, even though native support is the true goal.
+
+#### The Trojan Horse Strategy
+
+Right now, Qdrant is the reference implementation. If a developer using Pinecone wants to adopt the Vector Passport standard today, they need a frictionless way to map the schema into Pinecone's existing metadata fields. Providing a lightweight, official adapter that says `passport.to_pinecone()` removes the friction. It gets the standard into production now, which builds the usage metrics required to go to Pinecone and say: look at how many people are using this protocol, you should support it natively.
+
+#### Proving The Schema Is Truly Agnostic
+
+Every vector database handles filtering and metadata slightly differently. Some have strict typed schemas, others are schemaless JSON blobs. Building a few key reference adapters proves that the passport schema is truly agnostic and does not accidentally favor one database's architecture over another.
+
+#### Client-Side vs. Server-Side Execution
+
+Until databases adopt the standard natively, the logic of comparing the `source.hash` in the passport against the live document has to happen on the client-side application layer. The standard defines what is stored, but an adapter provides the engine to actually execute that staleness check against a specific database before sending the payload.
+
+#### The North Star
+
+The databases should be doing the heavy lifting. The standard should be the lingua franca of vector mobility. Building out the ecosystem is not about maintaining middleware forever. It is about building enough momentum that the middleware eventually becomes obsolete.
+

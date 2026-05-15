@@ -28,7 +28,9 @@ DEFAULT_SAMPLE_PATH = ROOT / "examples" / "sample-passport.json"
 
 
 def load_json(path: Path) -> Any:
-    with path.open("r", encoding="utf-8") as handle:
+    # utf-8-sig tolerates a BOM on input (common from Windows tools) while
+    # still accepting plain UTF-8.
+    with path.open("r", encoding="utf-8-sig") as handle:
         return json.load(handle)
 
 

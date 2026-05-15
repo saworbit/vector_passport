@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://vectorpassport.org/schema/v1.0/schema.json",
+  "$id": "urn:vector-passport:schema:1.0",
   "title": "Vector Passport",
   "description": "An open metadata standard for self-describing, traceable, portable embedding vectors.",
   "type": "object",

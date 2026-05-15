@@ -43,6 +43,10 @@ def create_vector_passport(
     embedding_parameters: dict[str, Any] | None = None,
     chunk_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    _validate_chunk_range(chunk_start, chunk_end)
+    if vector_values is not None:
+        _validate_dimension(vector_values, embedding_dimension)
+
     created_at = utc_now()
 
     passport: dict[str, Any] = {
@@ -111,6 +115,9 @@ def create_vector_passport_with_hash(
     embedding_parameters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a minimal text passport when the source and vector already exist."""
+    _validate_chunk_range(chunk_start, chunk_end)
+    _validate_dimension(vector, embedding_dimension)
+
     created_at = utc_now()
 
     return _drop_none(
@@ -164,6 +171,24 @@ def mark_stale(passport: dict[str, Any], reason: str) -> dict[str, Any]:
         }
     )
     return updated
+
+
+def _validate_chunk_range(chunk_start: int, chunk_end: int) -> None:
+    # chunk.start is inclusive, chunk.end is exclusive (SPEC §4.3). end <= start
+    # is meaningless to embed; refuse to write a poisoned passport.
+    if chunk_end <= chunk_start:
+        raise ValueError(
+            f"chunk_end ({chunk_end}) must be greater than chunk_start ({chunk_start}); "
+            f"chunk.end is exclusive of chunk.start."
+        )
+
+
+def _validate_dimension(vector: list[float], embedding_dimension: int) -> None:
+    if len(vector) != embedding_dimension:
+        raise ValueError(
+            f"Vector length ({len(vector)}) does not match embedding_dimension "
+            f"({embedding_dimension}). embedding.dimension is trusted metadata."
+        )
 
 
 def _drop_none(value: Any) -> Any:

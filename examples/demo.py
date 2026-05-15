@@ -31,11 +31,16 @@ try:
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
 except ImportError as error:  # pragma: no cover - exercised by user environment.
     raise SystemExit(
         "The demo requires cryptography. Install dependencies with: "
         "pip install -r requirements.txt"
     ) from error
+
+
+P256_COORDINATE_BYTES = 32
+P256_RAW_SIGNATURE_BYTES = P256_COORDINATE_BYTES * 2
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -159,10 +164,12 @@ def build_passport(source_path: Path, chunk_text: str, vector: list[float]) -> d
 def sign_passport(passport: dict[str, Any]) -> tuple[dict[str, Any], ec.EllipticCurvePublicKey]:
     private_key = ec.generate_private_key(ec.SECP256R1())
     public_key = private_key.public_key()
-    signature = private_key.sign(canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
+    der_signature = private_key.sign(canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
+    r, s = asym_utils.decode_dss_signature(der_signature)
+    raw_signature = r.to_bytes(P256_COORDINATE_BYTES, "big") + s.to_bytes(P256_COORDINATE_BYTES, "big")
 
     signed = dict(passport)
-    signed["signature"] = signature.hex()
+    signed["signature"] = raw_signature.hex()
     return signed, public_key
 
 
@@ -172,11 +179,17 @@ def verify_signature(passport: dict[str, Any], public_key: ec.EllipticCurvePubli
         return False
 
     try:
-        public_key.verify(
-            bytes.fromhex(signature),
-            canonical_passport_bytes(passport),
-            ec.ECDSA(hashes.SHA256()),
-        )
+        raw_signature = bytes.fromhex(signature)
+    except ValueError:
+        return False
+    if len(raw_signature) != P256_RAW_SIGNATURE_BYTES:
+        return False
+    r = int.from_bytes(raw_signature[:P256_COORDINATE_BYTES], "big")
+    s = int.from_bytes(raw_signature[P256_COORDINATE_BYTES:], "big")
+    der_signature = asym_utils.encode_dss_signature(r, s)
+
+    try:
+        public_key.verify(der_signature, canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
     except (InvalidSignature, ValueError):
         return False
     return True

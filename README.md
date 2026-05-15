@@ -1,18 +1,20 @@
 # Vector Passport
 
-**An open standard for self-describing, portable AI embedding vectors.**
+**An open, vendor-neutral standard for self-describing, portable AI embedding vectors.**
 
-Vector Passport turns every embedding vector into a traceable, portable record that knows where it came from, how it was made, and whether it is still valid.
-
-This solves one of the biggest practical problems in production RAG and semantic search systems: **vector lock-in** and painful re-embedding when you change models, chunking strategies, storage platforms, or vector databases.
+> **The problem:** Embedding vectors are stored as anonymous lists of numbers plus inconsistent ad-hoc metadata. Change your embedding model, chunking strategy, or vector database and you lose the context needed to safely reuse what you already have — so most teams re-embed everything, every time.
+>
+> **The fix:** A Vector Passport is a small JSON record (typically under 1 KB) that travels with every vector and records its source, chunk, embedding model, hashes, lifecycle state, and optional signature. Vectors become first-class, portable, auditable data assets instead of opaque numbers.
+>
+> **Why it's neutral:** Vector Passport standardizes the metadata *around* vectors. It does not standardize how vectors are made, which model you use, or which database you store them in. Works on top of Qdrant, LanceDB, Chroma, pgvector, Weaviate, Milvus, Pinecone, or anything that stores JSON alongside a vector.
 
 **Formal specification:** See [SPEC.md](SPEC.md) for the complete v1.0 draft specification, including the data model, workflows, design rationale, security considerations, and governance.
 
-This repository also includes a reference CLI implementation and practical demos.
+This repository also includes a reference CLI, a Python helper, and integration demos for Qdrant, LanceDB, Chroma, and pgvector.
 
 ---
 
-**Contents:** [Why It Exists](#why-it-exists) · [What It Enables](#what-it-enables) · [Features](#features) · [Installation](#installation) · [Quick Start](#quick-start) · [Vector Database Integration](#vector-database-integration) · [Schema](#schema) · [Staleness Detection](#staleness-detection) · [Security And Privacy](#security-and-privacy)
+**Contents:** [Why It Exists](#why-it-exists) · [What It Enables](#what-it-enables) · [Features](#features) · [Installation](#installation) · [Quick Start](#quick-start) · [Quickstart For Existing Pipelines](#quickstart-for-existing-pipelines) · [Vector Database Integration](#vector-database-integration) · [Schema](#schema) · [Staleness Detection](#staleness-detection) · [Overhead And Trade-offs](#overhead-and-trade-offs) · [Security And Privacy](#security-and-privacy) · [Roadmap And Known Gaps](#roadmap-and-known-gaps)
 
 ## Why It Exists
 
@@ -113,6 +115,22 @@ python examples/qdrant_integration.py
 ```
 
 This demo stores vectors plus full passports as Qdrant payload metadata, filters vectors by `passport.embedding.model`, and detects stale vectors by comparing `passport.source.hash` with simulated current source hashes.
+
+Run the Chroma integration demo:
+
+```bash
+python examples/chroma_integration.py
+```
+
+This demo stores the full passport as a JSON string plus flat filter keys in Chroma metadata, queries by `passport_embedding_model`, and detects stale vectors.
+
+Run the pgvector integration demo (dry run by default — no Postgres required):
+
+```bash
+python examples/pgvector_integration.py
+```
+
+This demo prints the SQL pattern for storing passports as JSONB with generated columns for hot filter keys, and simulates the staleness check. Use `--live` with `DATABASE_URL` set to execute against a real pgvector-enabled Postgres.
 
 ### 1. Create A Passport
 
@@ -216,6 +234,53 @@ python vector_passport.py create \
 python vector_passport.py verify-signature signed-passport.json --public-key ./public_key.pem
 ```
 
+## Quickstart For Existing Pipelines
+
+You don't need to restructure your ingestion code to start using passports. The pattern is:
+
+1. Embed as you do today.
+2. Wrap the result in a passport.
+3. Store the passport alongside the vector in your existing database.
+
+### Generic pattern (any framework, any vector DB)
+
+```python
+from implementations.python.vector_passport import create_vector_passport_with_hash
+
+# Whatever your pipeline already produces.
+text = "Our revenue grew 27%..."
+vector = embed_model.encode(text)
+vector_values = vector.tolist() if hasattr(vector, "tolist") else list(vector)
+
+passport = create_vector_passport_with_hash(
+    source_uri="s3://company-docs/q3-report.pdf",
+    source_hash="sha256:abc123...",          # hash of the original source object
+    chunk_strategy="recursive-character-512-50@1.0.0",
+    chunk_start=1247,
+    chunk_end=1873,
+    embedding_model="nomic-embed-text-v1.5",
+    embedding_dimension=768,
+    vector=vector_values,
+)
+
+# Hand the passport to whatever vector DB you use.
+vector_db.upsert(id=passport["vector_id"], vector=vector_values, payload={"text": text, "passport": passport})
+```
+
+That's it. Your vectors now travel with provenance, can be filtered by model or source, and can be checked for staleness later.
+
+### Where this fits in popular frameworks
+
+| Framework | Where to add the passport |
+| --- | --- |
+| **Direct ingestion script** | Right after `embed()`, before `upsert()`. See the pattern above. |
+| **LangChain** | In a custom `Document` `metadata` field, or wrap your embeddings function so each embedded chunk is paired with a passport in `metadata["passport"]`. |
+| **LlamaIndex** | Attach the passport to `Node.metadata["passport"]` in your ingestion pipeline, or in a custom `TransformComponent`. |
+| **Haystack** | Add the passport to the `Document.meta["passport"]` field before writing to the document store. |
+| **Custom pipelines** | Anywhere you already build per-vector metadata. The passport is just JSON. |
+
+Native framework adapters are on the [roadmap](#roadmap-and-known-gaps). Until then, the helper above works in any pipeline that lets you attach metadata to a vector — which is essentially all of them.
+
 ## Key Generation
 
 To use `--sign` and `verify-signature`, generate an ECDSA key pair.
@@ -294,6 +359,28 @@ It creates a temporary local LanceDB database, stores vectors plus full passport
 
 LanceDB is a strong fit for Vector Passport because it is embedded, local-first, columnar, and designed to keep vectors together with rich metadata.
 
+Try the Chroma demo:
+
+```bash
+python examples/chroma_integration.py
+```
+
+It uses Chroma's in-memory `EphemeralClient`, stores vectors with the full passport as a JSON string plus a handful of flat filter keys, queries by `passport_embedding_model`, and detects stale vectors using `passport.source.hash`. The "full + flat" pattern works around Chroma's flat-only metadata model.
+
+Try the pgvector demo (no Postgres needed — runs as a dry-run by default):
+
+```bash
+python examples/pgvector_integration.py
+```
+
+The dry run prints the SQL it would execute (including the `JSONB` column for the full passport and `GENERATED ALWAYS AS (...) STORED` columns for hot filter keys) and simulates the staleness check in memory. To execute against a real pgvector-enabled Postgres:
+
+```bash
+pip install "psycopg[binary]" pgvector
+export DATABASE_URL=postgresql://user:pass@localhost:5432/vp_demo
+python examples/pgvector_integration.py --live
+```
+
 ## What Gets Created
 
 The `create` command automatically computes:
@@ -367,9 +454,7 @@ The canonical JSON Schema is stored at:
 
 - [spec/v1.0/schema.json](spec/v1.0/schema.json)
 
-Planned hosted schema URL:
-
-- `https://vectorpassport.org/schema/v1.0`
+The schema's canonical `$id` is the URN `urn:vector-passport:schema:1.0` — immutable but non-resolvable. A stable hosted URL that resolves to this schema is on the [roadmap](#roadmap-and-known-gaps). Until then, fetch the file directly from this repository, pinned by commit SHA or release tag.
 
 Key fields include:
 
@@ -417,6 +502,42 @@ Suggested staleness states:
 
 More advanced systems can compare chunk-level hashes to avoid re-embedding every chunk in a modified file.
 
+### Client-side vs database-side staleness
+
+The hash comparison itself is inherently client-side today: the database has no way to know the current source hash without being told. But teams who want fast queries for "which of my vectors are stale right now?" should **store `passport.staleness.status` as a filterable field** and update it from a periodic job that walks the source corpus.
+
+| DB | Query stale vectors |
+| --- | --- |
+| Qdrant | Filter on `passport.staleness.status == "stale"` |
+| Chroma | `where={"passport_staleness_status": "stale"}` (Chroma metadata is flat — duplicate the field as a flat key at ingest time; see `examples/chroma_integration.py`) |
+| pgvector | `WHERE passport->'staleness'->>'status' = 'stale'` against a JSONB column |
+| LanceDB | Promote `staleness.status` to a top-level column for predicate pushdown |
+| Weaviate / Milvus / Pinecone | Promote `staleness_status` to a typed metadata field at ingest time |
+
+The pattern is: keep the full passport for portability, *and* duplicate the handful of fields you filter on (typically `embedding.model`, `source.uri`, `staleness.status`) as flat columns or typed metadata fields for your specific database.
+
+### Chunking strategy consistency
+
+Vector Passport intentionally does **not** standardize chunking. But teams that share vectors across pipelines benefit from naming their chunking strategies consistently. See the [chunking strategy registry](docs/chunking-strategy-registry.md) for a starting list of common names and versions.
+
+## Overhead And Trade-offs
+
+A typical passport is ~700–1200 bytes of JSON. The trade-off matters at scale:
+
+| Scale | Per-vector overhead | Total passport storage |
+| --- | --- | --- |
+| 10k vectors | ~1 KB | ~10 MB |
+| 1M vectors | ~1 KB | ~1 GB |
+| 100M vectors | ~1 KB | ~100 GB |
+
+For most production RAG systems this is negligible compared to the cost of the vectors themselves (768 × 4 bytes ≈ 3 KB for a small embedding, often 10–30 KB for larger models). At very large scale, consider:
+
+- Storing the full passport in an object store keyed by `vector_id`, and only the filterable subset (model, source URI, staleness status) in the vector database row.
+- Dropping optional fields you don't use (`lineage`, `chunk.metadata`, `extensions`) at write time.
+- Compressing the passport column (LanceDB, Parquet-backed stores, and Postgres TOAST all do this transparently).
+
+The passport is designed to be ignorable when you don't need it and rich when you do.
+
 ## Python Helper
 
 The reference Python helper can create passports and automatically compute `vector_hash` from embedding values.
@@ -455,6 +576,20 @@ Implementations should consider:
 ## Governance
 
 Vector Passport is an early-stage open standard. The specification uses semantic versioning, with the authoritative JSON Schema maintained for each released version. Vendor-specific or project-specific fields belong under `extensions`, keeping the core schema stable. See [SPEC.md § 9](SPEC.md#9-schema-evolution-and-versioning-strategies) for detailed evolution and versioning guidance, and [CONTRIBUTING.md](CONTRIBUTING.md) for the proposal checklist.
+
+## Roadmap And Known Gaps
+
+Vector Passport v1.0 is an early standard. The schema and CLI work today; the surrounding ecosystem is still being built. The most important gaps, in rough priority order:
+
+- **Framework adapters.** Native LangChain, LlamaIndex, and Haystack helpers so that "add a passport to my pipeline" is a one-line import. Until then, see [Quickstart For Existing Pipelines](#quickstart-for-existing-pipelines) for the manual pattern.
+- **More integration examples.** Qdrant, LanceDB, Chroma, and pgvector demos exist. Weaviate, Milvus, and Pinecone are open.
+- **Server-side native adoption.** The endgame is vector databases that understand passports natively — parsing lineage, verifying hashes, and running staleness checks server-side. Today this is all client-side. See [docs/what-vector-passports-enable.md § Integration Layer](docs/what-vector-passports-enable.md#integration-layer-and-the-path-to-native-adoption) for the strategy.
+- **Non-Python implementations.** The reference implementation is Python. Large-scale migration tooling will eventually want Rust or Go for throughput and concurrency.
+- **Chunking strategy registry.** A community-maintained list of named chunking strategies with versions. A starting point lives at [docs/chunking-strategy-registry.md](docs/chunking-strategy-registry.md).
+- **Vector lifecycle manager.** A standalone tool that scans passports and decides what to refresh, verify, supersede, or delete. The metadata is here; the tool isn't.
+- **Hosted schema URL.** The schema currently lives only in this repository. A stable hosted URL (so passports can reference the schema by canonical address rather than commit SHA) is desirable but no domain is registered yet.
+
+If any of these matter to you, open an issue or PR. The standard is more valuable the more places it shows up.
 
 ## License
 

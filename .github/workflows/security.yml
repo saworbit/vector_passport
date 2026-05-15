@@ -34,9 +34,12 @@ jobs:
       - name: Run Bandit
         id: bandit
         continue-on-error: true
+        # -r walks the named directories; new examples are picked up automatically.
+        # Cache and build directories are excluded explicitly because Bandit does
+        # not skip them by default.
         run: |
-          bandit -r vector_passport.py validate_passport.py implementations/python \
-            examples/demo.py examples/model_upgrade_demo.py examples/source_change_detection_demo.py examples/qdrant_integration.py examples/lancedb_integration.py \
+          bandit -r vector_passport.py validate_passport.py implementations examples \
+            --exclude __pycache__,.ruff_cache,.git,.venv \
             --severity-level medium \
             --confidence-level medium \
             --format json \

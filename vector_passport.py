@@ -18,6 +18,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import stat
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -37,17 +39,26 @@ try:
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
 except ImportError:
     InvalidSignature = None
     hashes = None
     serialization = None
     ec = None
+    asym_utils = None
+
+
+# P-256 / secp256r1 has a 256-bit (32-byte) coordinate size. The canonical
+# signature wire format for v1.0 is raw r || s (RFC 7518 §3.4 / JWS ES256):
+# 32-byte big-endian r concatenated with 32-byte big-endian s, hex-encoded.
+P256_COORDINATE_BYTES = 32
+P256_RAW_SIGNATURE_BYTES = P256_COORDINATE_BYTES * 2
 
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_SCHEMA_PATH = ROOT / "spec" / "v1.0" / "schema.json"
 RICH_AVAILABLE = Console is not None and Table is not None
-CRYPTO_AVAILABLE = all(item is not None for item in (InvalidSignature, hashes, serialization, ec))
+CRYPTO_AVAILABLE = all(item is not None for item in (InvalidSignature, hashes, serialization, ec, asym_utils))
 CONSOLE = Console() if Console is not None else None
 
 
@@ -56,7 +67,9 @@ def utc_now() -> str:
 
 
 def load_json(path: Path) -> Any:
-    with path.open("r", encoding="utf-8") as handle:
+    # utf-8-sig tolerates a BOM on input (common from Windows tools) while
+    # still accepting plain UTF-8. Writes remain BOM-less utf-8.
+    with path.open("r", encoding="utf-8-sig") as handle:
         return json.load(handle)
 
 
@@ -107,6 +120,11 @@ def load_vector(args: argparse.Namespace) -> list[Any]:
         raise ValueError("Vector input must be a JSON array of numbers.")
     if not all(isinstance(item, int | float) and not isinstance(item, bool) for item in vector):
         raise ValueError("Vector input must contain only numeric values.")
+    if len(vector) != args.dimension:
+        raise ValueError(
+            f"Vector length ({len(vector)}) does not match --dimension ({args.dimension}). "
+            f"embedding.dimension is trusted metadata; refuse to write a mismatched passport."
+        )
 
     return vector
 
@@ -130,6 +148,14 @@ def create_passport(args: argparse.Namespace) -> dict[str, Any]:
 
     if not source_path.is_file():
         raise FileNotFoundError(f"Source file not found: {source_path}")
+
+    # chunk.start is inclusive, chunk.end is exclusive (SPEC §4.3). A chunk
+    # with end <= start is empty or inverted — meaningless to embed.
+    if args.chunk_end <= args.chunk_start:
+        raise ValueError(
+            f"--chunk-end ({args.chunk_end}) must be greater than --chunk-start "
+            f"({args.chunk_start}). chunk.end is exclusive of chunk.start."
+        )
 
     vector = load_vector(args)
 
@@ -191,20 +217,32 @@ def create_passport(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def sign_passport(passport: dict[str, Any], private_key_path: Path) -> dict[str, Any]:
-    if not CRYPTO_AVAILABLE or serialization is None or ec is None or hashes is None:
+    if not CRYPTO_AVAILABLE or serialization is None or ec is None or hashes is None or asym_utils is None:
         raise RuntimeError("The 'cryptography' package is required for signing. Install with: pip install cryptography")
 
     with private_key_path.open("rb") as handle:
         private_key = serialization.load_pem_private_key(handle.read(), password=None)
 
-    signature = private_key.sign(canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
+    # cryptography returns DER-encoded ECDSA signatures. The v1.0 wire format
+    # is fixed-width raw r || s (RFC 7518 ES256 convention), so convert.
+    der_signature = private_key.sign(canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
+    r, s = asym_utils.decode_dss_signature(der_signature)
+    raw_signature = r.to_bytes(P256_COORDINATE_BYTES, "big") + s.to_bytes(P256_COORDINATE_BYTES, "big")
+
     signed = dict(passport)
-    signed["signature"] = signature.hex()
+    signed["signature"] = raw_signature.hex()
     return signed
 
 
 def verify_signature(passport: dict[str, Any], public_key_path: Path) -> tuple[bool, str | None]:
-    if not CRYPTO_AVAILABLE or serialization is None or ec is None or hashes is None or InvalidSignature is None:
+    if (
+        not CRYPTO_AVAILABLE
+        or serialization is None
+        or ec is None
+        or hashes is None
+        or InvalidSignature is None
+        or asym_utils is None
+    ):
         return False, "The 'cryptography' package is required for verification. Install with: pip install cryptography"
 
     signature = passport.get("signature")
@@ -212,14 +250,24 @@ def verify_signature(passport: dict[str, Any], public_key_path: Path) -> tuple[b
         return False, "Passport does not contain a signature string."
 
     try:
-        signature_bytes = bytes.fromhex(signature)
+        raw_signature = bytes.fromhex(signature)
     except ValueError as error:
         return False, f"Signature is not valid hex: {error}"
+
+    if len(raw_signature) != P256_RAW_SIGNATURE_BYTES:
+        return False, (
+            f"Signature is {len(raw_signature)} bytes; v1.0 requires "
+            f"{P256_RAW_SIGNATURE_BYTES}-byte raw r||s for P-256 ECDSA."
+        )
+
+    r = int.from_bytes(raw_signature[:P256_COORDINATE_BYTES], "big")
+    s = int.from_bytes(raw_signature[P256_COORDINATE_BYTES:], "big")
+    der_signature = asym_utils.encode_dss_signature(r, s)
 
     try:
         with public_key_path.open("rb") as handle:
             public_key = serialization.load_pem_public_key(handle.read())
-        public_key.verify(signature_bytes, canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
+        public_key.verify(der_signature, canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
     except InvalidSignature:
         return False, "Signature does not match passport content."
     except OSError as error:
@@ -242,12 +290,13 @@ def generate_keypair(private_key_path: Path, public_key_path: Path, force: bool 
     private_key = ec.generate_private_key(ec.SECP256R1())
     private_key_path.parent.mkdir(parents=True, exist_ok=True)
     public_key_path.parent.mkdir(parents=True, exist_ok=True)
-    private_key_path.write_bytes(
+    _write_private_key_bytes(
+        private_key_path,
         private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.TraditionalOpenSSL,
             encryption_algorithm=serialization.NoEncryption(),
-        )
+        ),
     )
     public_key_path.write_bytes(
         private_key.public_key().public_bytes(
@@ -255,6 +304,28 @@ def generate_keypair(private_key_path: Path, public_key_path: Path, force: bool 
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         )
     )
+
+
+def _write_private_key_bytes(path: Path, key_bytes: bytes) -> None:
+    """Write a private key with owner-only permissions (POSIX 0600).
+
+    On POSIX, opening with O_CREAT|O_WRONLY|O_TRUNC and mode 0o600 means the
+    file is never visible with looser permissions, even briefly. chmod
+    afterwards is also applied for the case where the file already existed
+    (--force) or the platform ignored the open mode. On Windows os.chmod only
+    toggles the read-only bit; POSIX ACLs do not apply.
+    """
+    flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
+    fd = os.open(str(path), flags, 0o600)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(key_bytes)
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        # Best-effort tightening for the --force overwrite path; on some
+        # filesystems chmod can fail. The initial open mode is the primary
+        # defense.
+        pass
 
 
 def validate_passport_file(path: Path, schema: dict[str, Any], verbose: bool = False) -> tuple[bool, str | None]:

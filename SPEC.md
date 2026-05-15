@@ -139,7 +139,8 @@ Lineage should be append-only where practical.
 The authoritative JSON Schema for v1.0 is located at:
 
 - **Repository path:** [spec/v1.0/schema.json](spec/v1.0/schema.json)
-- **Planned hosted URL:** `https://vectorpassport.org/schema/v1.0`
+- **Canonical `$id`:** `urn:vector-passport:schema:1.0` (URN, immutable, non-resolvable)
+- **Hosted URL:** none yet. A stable URL that resolves to this schema is desirable but no domain is registered; until then, fetch the file directly from this repository, pinned by commit SHA or release tag.
 
 Implementations should validate passports against the JSON Schema when creating, importing, exporting, or migrating vectors.
 
@@ -189,7 +190,7 @@ Store ──────────────  persist the vector and passpor
 4. **Compute vector hash.** Hash the raw embedding values and store the result in `vector_hash`.
 5. **Assemble the passport.** Populate all required fields: `passport_version`, `vector_id`, `source`, `chunk`, `embedding`, and `created_at`.
 6. **Append a lineage event.** Add an `initial_creation` event with the current timestamp.
-7. **Sign (optional).** If tamper evidence is needed, sign the canonical passport JSON (with `signature` set to `null`) using ECDSA and store the result in `signature`.
+7. **Sign (optional).** If tamper evidence is needed, sign the canonical passport bytes (defined in [§ 8.1 Signature Canonicalization](#81-signature-canonicalization)) using ECDSA and store the resulting hex string in `signature`.
 8. **Store together.** Persist the vector and its passport in the same record, payload, or metadata layer.
 
 ### 6.2 Staleness Detection Workflow
@@ -345,11 +346,62 @@ Both patterns are valid as long as the full passport can be recovered and valida
 ## 8. Security And Privacy Considerations
 
 - **Integrity:** `source.hash`, `chunk.hash`, and `vector_hash` support change and integrity checks.
-- **Signing:** The optional `signature` field can hold an ECDSA signature over canonical passport content with `signature` omitted.
+- **Signing:** The optional `signature` field can hold an ECDSA signature over the canonical bytes defined in [§ 8.1 Signature Canonicalization](#81-signature-canonicalization).
 - **Trust:** Signatures allow downstream systems to verify that a passport came from a trusted pipeline.
 - **Privacy:** Source URIs, filenames, headings, and extension metadata may reveal sensitive information.
 - **Redaction:** Sensitive operational details should be redacted, tokenized, encrypted, or placed in controlled `extensions`.
-- **Key management:** Private signing keys must be stored securely and rotated according to local security policy.
+- **Key management:** Private signing keys must be stored securely (POSIX `0600` or equivalent, encrypted at rest where supported) and rotated according to local security policy.
+
+### 8.1 Signature Canonicalization
+
+Signatures are computed and verified over **canonical passport bytes**, which are normatively defined as:
+
+1. Start from the passport JSON object.
+2. **Remove the `signature` key entirely** if present. Do not set it to `null`; remove the key.
+3. Serialize the resulting object to UTF-8 JSON with:
+   - keys sorted lexicographically at every depth,
+   - no insignificant whitespace (`","` and `":"` separators, no spaces, no trailing newline).
+4. The resulting bytes are the input to the signing or verification operation.
+
+Reference Python:
+
+```python
+import json
+
+def canonical_passport_bytes(passport: dict) -> bytes:
+    unsigned = dict(passport)
+    unsigned.pop("signature", None)  # remove, do not set to None
+    return json.dumps(unsigned, separators=(",", ":"), sort_keys=True).encode("utf-8")
+```
+
+This is the single canonical form. Implementations that set `signature` to `null` before signing will produce signatures that other v1.0 implementations reject. The remove-the-key rule is normative for v1.0.
+
+The signature algorithm for v1.0 is **ECDSA over the NIST P-256 curve** (`secp256r1` / `prime256v1`) **with SHA-256**.
+
+**Signature wire format (normative):** the signature is the fixed-width raw concatenation `r || s`, where each of `r` and `s` is the corresponding ECDSA component encoded as a 32-byte big-endian unsigned integer (left-zero-padded if necessary). The total length is exactly 64 bytes. Set the `signature` field to the lowercase hex encoding of these 64 bytes (128 hex characters). This is the same convention as RFC 7518 §3.4 (JWS ES256).
+
+Implementations that use libraries returning DER-encoded ECDSA signatures (OpenSSL, Python `cryptography`, etc.) must convert DER to raw `r || s` before encoding. Reference Python:
+
+```python
+from cryptography.hazmat.primitives.asymmetric import ec, utils as asym_utils
+from cryptography.hazmat.primitives import hashes
+
+# Sign:
+der = private_key.sign(canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
+r, s = asym_utils.decode_dss_signature(der)
+raw = r.to_bytes(32, "big") + s.to_bytes(32, "big")   # 64 bytes
+passport["signature"] = raw.hex()                     # 128 hex chars
+
+# Verify:
+raw = bytes.fromhex(passport["signature"])
+assert len(raw) == 64
+r = int.from_bytes(raw[:32], "big")
+s = int.from_bytes(raw[32:], "big")
+der = asym_utils.encode_dss_signature(r, s)
+public_key.verify(der, canonical_passport_bytes(passport), ec.ECDSA(hashes.SHA256()))
+```
+
+Passports whose `signature` is not exactly 128 lowercase hex characters MUST be rejected by v1.0 verifiers as malformed, independent of whether the underlying ECDSA math would otherwise succeed.
 
 ## 9. Schema Evolution And Versioning Strategies
 

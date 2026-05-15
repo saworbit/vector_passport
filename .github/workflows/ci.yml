@@ -25,7 +25,10 @@ jobs:
         run: python -m pip install ruff
 
       - name: Lint Python files
-        run: ruff check vector_passport.py validate_passport.py implementations/python/vector_passport.py examples/demo.py examples/model_upgrade_demo.py examples/source_change_detection_demo.py examples/qdrant_integration.py examples/lancedb_integration.py
+        # Ruff's default excludes already cover .git, __pycache__, .ruff_cache,
+        # .venv, etc. Linting the whole tree keeps CI in sync with new files
+        # automatically — no more hand-maintained file lists drifting from reality.
+        run: ruff check .
 
   test:
     runs-on: ubuntu-latest
@@ -66,6 +69,10 @@ jobs:
           python examples/source_change_detection_demo.py
           python examples/qdrant_integration.py
           python examples/lancedb_integration.py
+          python examples/chroma_integration.py
+          # pgvector demo runs in dry-run mode without a database; --live
+          # would require DATABASE_URL and is not exercised in CI.
+          python examples/pgvector_integration.py
 
       - name: Dry-run create from file
         run: |
@@ -142,4 +149,6 @@ jobs:
           python vector_passport.py verify-signature /tmp/signed-passport.json --public-key /tmp/public_key.pem
 
       - name: Compile Python files
-        run: python -m py_compile vector_passport.py validate_passport.py implementations/python/vector_passport.py examples/demo.py examples/model_upgrade_demo.py examples/source_change_detection_demo.py examples/qdrant_integration.py examples/lancedb_integration.py
+        # compileall walks every .py under the listed roots, so it picks up
+        # new examples without workflow edits.
+        run: python -m compileall -q vector_passport.py validate_passport.py implementations examples

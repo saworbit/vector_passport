@@ -147,6 +147,26 @@ Vector Passport exists to solve that problem. It turns vectors from throwaway te
 
 ## Future State And Known Gaps
 
+### Framework Adapters
+
+The Quickstart in the README shows the universal pattern for any pipeline: embed → wrap in a passport → store alongside the vector. Lowering that to a one-line `from vector_passport.langchain import passport_aware_embedder` (and equivalents for LlamaIndex, Haystack, dlt, and Unstructured) would meaningfully reduce adoption friction. The schema is the contract; the adapters are the on-ramp.
+
+### Vector Database Coverage
+
+Working integration demos exist for Qdrant, LanceDB, Chroma, and pgvector. Each shows the idiomatic storage shape for that database — full passport plus a handful of duplicated flat fields for filtering. Demos for Weaviate, Milvus, and Pinecone are still open. Each new demo also serves as a forcing function on the schema: if a passport cannot be expressed cleanly in a given store, that's a signal the schema is leaking assumptions.
+
+### Chunking Strategy Registry
+
+Vector Passport intentionally does not standardize chunking. But two pipelines writing `"recursive-character-512-50"` and `"recursive_char_512/50"` for the same idea lose most of the comparison value the passport is supposed to provide. A lightweight community-maintained registry of common strategy names, parameter conventions, and versions lives at [docs/chunking-strategy-registry.md](chunking-strategy-registry.md) as a starting point.
+
+### Server-Side Staleness And Hot Filter Fields
+
+Today, the source-hash comparison that drives staleness detection is client-side: the application reads the current source, hashes it, and compares against `passport.source.hash`. Storing `passport.staleness.status` (and a small set of other hot fields like `passport.embedding.model`) as filterable database fields lets a periodic job write the comparison result back, so downstream queries can ask "which vectors are stale right now?" without rescanning the corpus. Every integration demo in this repository shows this pattern; the gap is documenting it as a standard recommendation in the spec itself.
+
+### Overhead And Size Budget
+
+A typical passport is ~700–1200 bytes. At very large scale, teams may want a "compact" profile that drops `lineage`, `chunk.metadata`, and `extensions` at write time, or an external store keyed by `vector_id` that holds the full passport while only the filterable subset lives in the vector database row. The v1.0 schema makes most fields optional precisely to enable this, but the standard does not yet name the compact profile or specify what an external-passport reference would look like.
+
 ### Language Ecosystem
 
 The reference implementation and CLI are currently 100% Python. While Python is excellent for prototyping and data science workflows, bulk vector migrations and massive dataset tracking will eventually hit performance bottlenecks. Expanding the implementation to memory-safe, highly concurrent languages like Rust or Go would significantly boost viability for large-scale production use.

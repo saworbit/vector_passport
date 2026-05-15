@@ -21,5 +21,14 @@
 - Added source file change detection demo showing stale-vector detection with `source.hash`.
 - Added Qdrant integration demo showing passports as vector database payload metadata.
 - Added LanceDB integration demo showing passports as table metadata for filtering and stale-vector detection.
+- Added Chroma integration demo showing full-passport JSON plus flat filterable metadata fields.
+- Added pgvector integration demo showing JSONB passport storage, generated hot-filter columns, and dry-run SQL.
+- Added draft chunking strategy registry with stable, versioned names for common chunking patterns.
 - Added formal `SPEC.md` for the Vector Passport v1.0 draft specification.
 - Expanded `SPEC.md` schema evolution and versioning guidance.
+- Changed the v1.0 JSON Schema `$id` to the immutable URN `urn:vector-passport:schema:1.0`.
+- Defined canonical v1.0 signature bytes and raw P-256 `r || s` signature wire format.
+- Hardened CLI and Python helper validation for vector dimension mismatches and invalid chunk ranges.
+- Added UTF-8 BOM-tolerant JSON input handling for Windows-authored files.
+- Tightened generated private-key file permissions on POSIX systems.
+- Broadened CI and security scans to cover new examples automatically.

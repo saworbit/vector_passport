@@ -1,12 +1,14 @@
 # Vector Passport
 
-**An open, vendor-neutral standard for self-describing, portable AI embedding vectors.**
+**An open, independent standard for the metadata that travels with an AI embedding vector.**
 
-> **The problem:** Embedding vectors are stored as anonymous lists of numbers plus inconsistent ad-hoc metadata. Change your embedding model, chunking strategy, or vector database and you lose the context needed to safely reuse what you already have — so most teams re-embed everything, every time.
+> **What it is:** A shared convention for describing where a vector came from, how it was made, and whether it is still valid. The portable form is a small JSON record (typically under 1 KB) that records source, chunk, embedding model, hashes, lifecycle state, and an optional signature, and travels with the vector wherever it goes.
 >
-> **The fix:** A Vector Passport is a small JSON record (typically under 1 KB) that travels with every vector and records its source, chunk, embedding model, hashes, lifecycle state, and optional signature. Vectors become first-class, portable, auditable data assets instead of opaque numbers.
+> **Why a standard:** Many retrieval platforms and vector databases either track parts of this context natively or let the application attach it through generic metadata or payload fields. Either way, every system does it differently, with its own field names, formats, and APIs. That makes vectors hard to move, compare, or audit between systems. A shared convention closes that gap, so a vector created in one stack can be understood by another.
 >
-> **Why it's neutral:** Vector Passport standardizes the metadata *around* vectors. It does not standardize how vectors are made, which model you use, or which database you store them in. Works on top of Qdrant, LanceDB, Chroma, pgvector, Weaviate, Milvus, Pinecone, or anything that stores JSON alongside a vector.
+> **Where this should go:** The real endgame is that provenance like this stops being a sidecar at all and becomes part of what a vector means inside the database, the same way every database understands a primary key. Until vector stores agree on a shape, Vector Passport gives teams a way to carry the standard themselves.
+>
+> **What it does not standardize:** how you chunk, which embedding model you use, or which database you store vectors in. Works on top of Qdrant, LanceDB, Chroma, pgvector, Weaviate, Milvus, Pinecone, or anything that stores JSON alongside a vector.
 
 **Formal specification:** See [SPEC.md](SPEC.md) for the complete v1.0 draft specification, including the data model, workflows, design rationale, security considerations, and governance.
 
@@ -600,15 +602,19 @@ If Spectrum (or any store that preserves the canonical source cleanly) holds the
 
 Thanks to the Spectrum author for prompting the lossy view framing now reflected in [Why It Exists](#why-it-exists).
 
-### Platforms And Stores With Native Provenance
+### Platforms With Their Own Native Provenance
 
-Some retrieval platforms and vector databases push lineage into the platform or store itself rather than sidecaring it. [Vectara](https://www.vectara.com/) is a retrieval and agent platform with an internal vector database that surfaces provenance natively through its retrieval API. [HydraDB](https://docs.hydradb.com/) is a retrieval and context infrastructure platform that exposes similar source and metadata controls through its platform SDK and API. If you are fully committed to one of these, and the provenance model it ships with covers your use cases, an external passport convention may just be extra luggage.
+[Vectara](https://www.vectara.com/) is a retrieval and agent platform with an internal vector database that surfaces provenance natively through its retrieval API. [HydraDB](https://docs.hydradb.com/) is a retrieval and context infrastructure platform that exposes source and metadata controls through its platform SDK and API. Both handle provenance well within their own platform.
 
-Vector Passport is aimed at the messier case: teams running migrations, mixing stores, swapping embedding models, inheriting patchy pipelines from someone who has since moved on, or running experiments where the chosen platform might change next quarter. In a deployment built around one platform with strong native lineage, whether that lineage lives in the retrieval platform or the database, much of the value here is already covered upstream.
+The catch is that each one does it in its own way, with its own field names, its own formats, and its own APIs. That works fine as long as your vectors never leave. The moment a vector needs to move between stacks, be compared across systems, or be migrated somewhere new, there is no shared language for what came from where.
+
+That is the gap Vector Passport is aimed at. It is not trying to replace what these platforms do internally. It is a portable convention for the metadata around a vector, so a vector that started in one platform can still be understood by another. If every platform is doing this its own way, a small shared standard is what lets the vectors move between them.
+
+Vector Passport is most useful in exactly that kind of mixed environment: teams running migrations, mixing stores, swapping embedding models, inheriting patchy pipelines from someone who has since moved on, or running experiments where the chosen platform might change next quarter.
 
 ### Where The Overlap Is Useful
 
-The interesting overlap across all of this is the handover point. When content is projected from a store that preserves the original source into a derived vector store, something needs to travel with the projection so it can find its way back. The passport is one shape that handover can take. It does not rule out better options inside the store where they exist.
+The interesting overlap across all of this is the handover point. When content is projected from a store that preserves the original source into a derived vector store, something needs to travel with the projection so it can find its way back. The passport is one portable shape that handover can take.
 
 ## Roadmap And Known Gaps
 

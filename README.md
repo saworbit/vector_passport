@@ -89,9 +89,34 @@ python vector_passport.py --help
 
 ## Quick Start
 
-### Practical Demo (Try It Now)
+### See It In Action: The Migration Story
 
-Run the full end-to-end demo:
+If you only run one thing, run this. It is the flagship, narrative-driven demo and the single best way to understand what Vector Passport actually buys you in a real RAG system.
+
+```bash
+pip install -r requirements.txt
+python examples/migration_story.py
+```
+
+In five short acts, [examples/migration_story.py](examples/migration_story.py) takes a small corpus through:
+
+1. **Setup** — ingest 5 documents into Qdrant (in-memory) with full Vector Passports.
+2. **The Pain** — show what migration looks like *without* passports: just floats and text, no model, no source, no provenance.
+3. **The Switch** — migrate Qdrant → LanceDB. Vectors and full provenance move together; every passport is re-validated against [spec/v1.0/schema.json](spec/v1.0/schema.json) on arrival. When a vector's representation is rewritten in flight (Qdrant cosine-normalizes and stores as float32), the migration updates `vector_hash` to describe the vector values being stored and appends a `representation_change` lineage event so the transformation is auditable.
+4. **Model Upgrade** — upgrade from `nomic-embed-text-v1.5` to `nomic-embed-text-v2`. Re-embed only the vectors that need it: 3 are re-embedded (source changed or high-priority quality upgrade), 1 is deferred (still valid, low priority), 1 is kept (different model family, out of scope).
+5. **The Win** — answer three queries that are impossible without passports:
+   - "Show me every vector still on `nomic-embed-text-v1.5` from this specific source file."
+   - "Which chunks are now stale because the source document changed?"
+   - "Give me the exact source span and model version behind this vector ID."
+
+The demo ends with a Before / After summary table. Runs entirely offline in a few seconds — no Qdrant server, no LanceDB credentials, no API keys.
+
+> **Before Vector Passport:** full re-embedding and lost context on every migration.
+> **After Vector Passport:** clean migration, smart partial updates, and full auditability.
+
+### Other Practical Demos
+
+Run the full end-to-end signing demo:
 
 ```bash
 pip install -r requirements.txt

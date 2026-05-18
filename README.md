@@ -33,9 +33,9 @@ The goal is to standardize the metadata and tracking layer around vectors, witho
 
 ### The Vector Is A Lossy View, Not The Source
 
-A passport is deliberately not the source of truth. The vector itself is a lossy projection of a canonical source object — the document, page, table, paragraph, audio clip, or video frame that was embedded. The passport's job is to keep that projection tied back to the real source and the exact span it came from, so the vector can be rebuilt, audited, cited, or moved without becoming an anonymous list of numbers.
+A passport is not the source of truth. The vector is a lossy view of whatever was embedded: a document, page, paragraph, audio clip, or similar. The passport keeps that vector connected to the real source and the exact span it came from, so it can be rebuilt or audited later instead of ending up as a list of numbers nobody can trace.
 
-This framing matters when teams design ingestion. The passport should *point at* the canonical source (URI, hash, chunk boundary), not try to *replace* it. Storing the source object faithfully is a separate concern — and one some projects address directly; see [Related Projects](#related-projects-and-adjacent-standards) below.
+This matters when you design ingestion. The passport should point at the canonical source (URI, hash, chunk boundary). It should not try to replace it. Storing the source faithfully is a separate problem, and some projects address it directly. See [Related Projects](#related-projects-and-adjacent-standards) below.
 
 ## What It Enables
 
@@ -585,30 +585,30 @@ Vector Passport is an early-stage open standard. The specification uses semantic
 
 ## Related Projects And Adjacent Standards
 
-Vector Passport is not the only way to attack the provenance problem, and it is not the right answer for every team. Some adjacent work worth knowing about:
+Vector Passport is not the only way to handle provenance, and it is not the right fit for every team. A few neighbouring efforts are worth knowing about.
 
-### Source-Faithful Storage: Spectrum
+### Keeping The Original Source Intact: Spectrum
 
-[Spectrum](https://github.com/Jimvana/spectrum) tackles an adjacent problem from the source-faithful retrieval and storage side. Where Vector Passport assumes you already have a vector database and wants to make the vectors in it more portable, Spectrum is more disciplined about keeping the original source intact and reconstructable in the first place.
+[Spectrum](https://github.com/Jimvana/spectrum) comes at the same problem from the other end. Where Vector Passport assumes you already have a vector database and tries to make the vectors in it portable, Spectrum focuses on keeping the original source intact and reconstructable in the first place.
 
-The two are complementary, not competing. A useful framing:
+The two work well together rather than against each other.
 
-- **Spectrum** answers: "can I reconstruct the exact source bytes that were used at ingestion, under which parser and version?"
+- **Spectrum** answers: "can I reconstruct the exact source bytes used at ingestion, under which parser and version?"
 - **Vector Passport** answers: "if a derived vector ends up in a different store six months from now, can it still find its way home?"
 
-If Spectrum (or any source-faithful store) is holding the canonical source cleanly and part of that content is projected into a vector database for semantic search, the passport is what should travel with the projected chunk so it can still point back. The benchmark question is the same one: after moving or rebuilding an index, can the system still answer "where did this exact chunk come from, under which parser and model version?"
+If Spectrum (or any store that preserves the canonical source cleanly) holds the original content and part of it is projected into a vector database for semantic search, the passport is what travels with the projected chunk so it can still point back. The benchmark question is the same either way: after a move or a rebuild, can the system still answer "where did this exact chunk come from, under which parser and model version?"
 
-Credit to the Spectrum author for articulating the lossy-view framing now reflected in [Why It Exists](#why-it-exists).
+Thanks to the Spectrum author for prompting the lossy view framing now reflected in [Why It Exists](#why-it-exists).
 
 ### Platforms And Stores With Native Provenance
 
-Some retrieval platforms and vector databases push lineage into the platform or store itself rather than sidecaring it. [Vectara](https://www.vectara.com/) is a retrieval and agent platform with an internal vector database that surfaces provenance natively as part of its retrieval API. Tools like HydraDB take a similar approach at the SDK level on the database side. If your team is fully committed to one of these and its native provenance model is enough for your use cases, an external passport convention may simply be extra luggage.
+Some retrieval platforms and vector databases push lineage into the platform or store itself rather than sidecaring it. [Vectara](https://www.vectara.com/) is a retrieval and agent platform with an internal vector database that surfaces provenance natively through its retrieval API. [HydraDB](https://docs.hydradb.com/) is a retrieval and context infrastructure platform that exposes similar source and metadata controls through its platform SDK and API. If you are fully committed to one of these, and the provenance model it ships with covers your use cases, an external passport convention may just be extra luggage.
 
-Vector Passport is aimed at the messier infrastructure case: teams running migrations, mixing stores, swapping embedding models, inheriting half-documented pipelines, or running experiments where the chosen platform might change next quarter. In a single-platform deployment with strong native lineage — whether that lineage lives in the retrieval platform or the database — much of the value here is already provided upstream.
+Vector Passport is aimed at the messier case: teams running migrations, mixing stores, swapping embedding models, inheriting patchy pipelines from someone who has since moved on, or running experiments where the chosen platform might change next quarter. In a deployment built around one platform with strong native lineage, whether that lineage lives in the retrieval platform or the database, much of the value here is already covered upstream.
 
 ### Where The Overlap Is Useful
 
-Across all of these, the genuinely useful overlap is the hand-off point: when content is projected from a source-faithful store into a derived vector store, *something* needs to travel with the projection so it can find its way back. The passport is one shape that hand-off can take. It does not preclude better, store-native options where they exist.
+The interesting overlap across all of this is the handover point. When content is projected from a store that preserves the original source into a derived vector store, something needs to travel with the projection so it can find its way back. The passport is one shape that handover can take. It does not rule out better options inside the store where they exist.
 
 ## Roadmap And Known Gaps
 

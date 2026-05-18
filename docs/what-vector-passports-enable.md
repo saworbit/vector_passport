@@ -6,6 +6,17 @@ The practical value is this: vectors stop being anonymous lists of numbers and b
 
 That unlocks a set of concrete workflows that are difficult, expensive, or fragile without a shared metadata contract.
 
+## Framing: Vectors Are A Lossy View Over A Canonical Source
+
+Before the workflows, the framing that shapes them: a vector is a lossy projection of a canonical source object — a document, page, paragraph, table, audio clip, video frame. The passport is not trying to *be* that source. It is trying to keep the projection tied back to it.
+
+That distinction matters because it draws a clean line between two responsibilities:
+
+- **Holding the source faithfully** is the job of the upstream content system, document store, or a source-faithful project like [Spectrum](https://github.com/Jimvana/spectrum). The goal there is "can I reconstruct the exact bytes used at ingestion, under which parser and version?"
+- **Keeping the derived vector tied back to that source** is the job of the passport. The goal here is "if this vector ends up in a different store six months from now, can it still point home — to the source URI, the exact span, the parser version, and the model that produced it?"
+
+Designing the passport around this hand-off is what keeps it from drifting into "tiny vector database in JSON form." It is a pointer with enough integrity metadata to be trusted, not a replacement for the canonical source.
+
 ## 1. Cheap And Intelligent Re-embedding
 
 This is the most immediate win.

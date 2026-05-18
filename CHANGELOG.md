@@ -32,3 +32,5 @@
 - Added UTF-8 BOM-tolerant JSON input handling for Windows-authored files.
 - Tightened generated private-key file permissions on POSIX systems.
 - Broadened CI and security scans to cover new examples automatically.
+- Added "vector as a lossy retrieval view" framing to the README, `SPEC.md` motivation, and the what-passports-enable doc, clarifying that the passport points at a canonical source rather than replacing it.
+- Added a "Related Projects And Adjacent Standards" section to the README, with a shout-out to Spectrum as a complementary source-faithful project, plus honest positioning against platforms and tools with native provenance — distinguishing retrieval/agent platforms like Vectara from database-side approaches like HydraDB.

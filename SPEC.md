@@ -35,6 +35,17 @@ Modern RAG and semantic search systems suffer from several systemic problems.
 
 Vector Passport addresses these by making provenance first-class data that travels with every vector.
 
+### 2.1 Positioning: The Vector As A Lossy Retrieval View
+
+The passport is built on a deliberate framing: a vector is a lossy projection of a canonical source object, not the source itself. The passport's job is to keep that projection tied back to the canonical source — by URI, content hash, exact span, parser, and model version — so the vector remains rebuildable, auditable, and portable when it leaves the system that created it.
+
+Two consequences follow from this framing and inform the rest of this specification:
+
+1. The passport must point at the canonical source, not attempt to replace it. Fields like `source.uri`, `source.hash`, `chunk.start`/`chunk.end`, and `chunk.strategy` exist so the projection can be reconstructed or compared against the live source. They are not a substitute for faithful source storage.
+2. Where a system already provides strong native provenance — for example, a vector database that embeds lineage natively, or a source-faithful store that holds canonical bytes — much of the passport's value is already covered. The passport is most useful in mixed, migrating, or multi-platform environments where there is no single store responsible for that context.
+
+See [README § Related Projects And Adjacent Standards](README.md#related-projects-and-adjacent-standards) for adjacent projects, including source-faithful retrieval work that complements the passport's role.
+
 ## 3. Design Goals
 
 | Goal | Description | Priority |

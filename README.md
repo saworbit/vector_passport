@@ -14,7 +14,7 @@ This repository also includes a reference CLI, a Python helper, and integration 
 
 ---
 
-**Contents:** [Why It Exists](#why-it-exists) · [What It Enables](#what-it-enables) · [Features](#features) · [Installation](#installation) · [Quick Start](#quick-start) · [Quickstart For Existing Pipelines](#quickstart-for-existing-pipelines) · [Vector Database Integration](#vector-database-integration) · [Schema](#schema) · [Staleness Detection](#staleness-detection) · [Overhead And Trade-offs](#overhead-and-trade-offs) · [Security And Privacy](#security-and-privacy) · [Roadmap And Known Gaps](#roadmap-and-known-gaps)
+**Contents:** [Why It Exists](#why-it-exists) · [What It Enables](#what-it-enables) · [Features](#features) · [Installation](#installation) · [Quick Start](#quick-start) · [Quickstart For Existing Pipelines](#quickstart-for-existing-pipelines) · [Vector Database Integration](#vector-database-integration) · [Schema](#schema) · [Staleness Detection](#staleness-detection) · [Overhead And Trade-offs](#overhead-and-trade-offs) · [Security And Privacy](#security-and-privacy) · [Related Projects](#related-projects-and-adjacent-standards) · [Roadmap And Known Gaps](#roadmap-and-known-gaps)
 
 ## Why It Exists
 
@@ -30,6 +30,12 @@ A Vector Passport travels with every vector and answers:
 - Is the passport signature valid?
 
 The goal is to standardize the metadata and tracking layer around vectors, without standardizing how vectors must be created.
+
+### The Vector Is A Lossy View, Not The Source
+
+A passport is deliberately not the source of truth. The vector itself is a lossy projection of a canonical source object — the document, page, table, paragraph, audio clip, or video frame that was embedded. The passport's job is to keep that projection tied back to the real source and the exact span it came from, so the vector can be rebuilt, audited, cited, or moved without becoming an anonymous list of numbers.
+
+This framing matters when teams design ingestion. The passport should *point at* the canonical source (URI, hash, chunk boundary), not try to *replace* it. Storing the source object faithfully is a separate concern — and one some projects address directly; see [Related Projects](#related-projects-and-adjacent-standards) below.
 
 ## What It Enables
 
@@ -576,6 +582,33 @@ Implementations should consider:
 ## Governance
 
 Vector Passport is an early-stage open standard. The specification uses semantic versioning, with the authoritative JSON Schema maintained for each released version. Vendor-specific or project-specific fields belong under `extensions`, keeping the core schema stable. See [SPEC.md § 9](SPEC.md#9-schema-evolution-and-versioning-strategies) for detailed evolution and versioning guidance, and [CONTRIBUTING.md](CONTRIBUTING.md) for the proposal checklist.
+
+## Related Projects And Adjacent Standards
+
+Vector Passport is not the only way to attack the provenance problem, and it is not the right answer for every team. Some adjacent work worth knowing about:
+
+### Source-Faithful Storage: Spectrum
+
+[Spectrum](https://github.com/Jimvana/spectrum) tackles an adjacent problem from the source-faithful retrieval and storage side. Where Vector Passport assumes you already have a vector database and wants to make the vectors in it more portable, Spectrum is more disciplined about keeping the original source intact and reconstructable in the first place.
+
+The two are complementary, not competing. A useful framing:
+
+- **Spectrum** answers: "can I reconstruct the exact source bytes that were used at ingestion, under which parser and version?"
+- **Vector Passport** answers: "if a derived vector ends up in a different store six months from now, can it still find its way home?"
+
+If Spectrum (or any source-faithful store) is holding the canonical source cleanly and part of that content is projected into a vector database for semantic search, the passport is what should travel with the projected chunk so it can still point back. The benchmark question is the same one: after moving or rebuilding an index, can the system still answer "where did this exact chunk come from, under which parser and model version?"
+
+Credit to the Spectrum author for articulating the lossy-view framing now reflected in [Why It Exists](#why-it-exists).
+
+### Platforms And Stores With Native Provenance
+
+Some retrieval platforms and vector databases push lineage into the platform or store itself rather than sidecaring it. [Vectara](https://www.vectara.com/) is a retrieval and agent platform with an internal vector database that surfaces provenance natively as part of its retrieval API. Tools like HydraDB take a similar approach at the SDK level on the database side. If your team is fully committed to one of these and its native provenance model is enough for your use cases, an external passport convention may simply be extra luggage.
+
+Vector Passport is aimed at the messier infrastructure case: teams running migrations, mixing stores, swapping embedding models, inheriting half-documented pipelines, or running experiments where the chosen platform might change next quarter. In a single-platform deployment with strong native lineage — whether that lineage lives in the retrieval platform or the database — much of the value here is already provided upstream.
+
+### Where The Overlap Is Useful
+
+Across all of these, the genuinely useful overlap is the hand-off point: when content is projected from a source-faithful store into a derived vector store, *something* needs to travel with the projection so it can find its way back. The passport is one shape that hand-off can take. It does not preclude better, store-native options where they exist.
 
 ## Roadmap And Known Gaps
 

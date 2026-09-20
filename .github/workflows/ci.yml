@@ -52,7 +52,7 @@ jobs:
         run: ruff check .
 
   test:
-    name: Tests (Python ${{ matrix.python-version }})
+    name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:

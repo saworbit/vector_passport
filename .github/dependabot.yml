@@ -1,0 +1,44 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      pip-core:
+        patterns:
+          - jsonschema
+          - cryptography
+          - rich
+        update-types:
+          - minor
+          - patch
+      pip-demo:
+        patterns:
+          - qdrant-client
+          - lancedb
+          - chromadb
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

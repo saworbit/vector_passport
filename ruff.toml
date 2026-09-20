@@ -1,0 +1,7 @@
+target-version = "py310"
+
+# EXE001 fires on shebang files that Git stored without the executable bit,
+# which is normal for this repo. Pin the Ruff version in CI so the rest of
+# the default rule set cannot drift under us week to week.
+[lint]
+extend-ignore = ["EXE001"]

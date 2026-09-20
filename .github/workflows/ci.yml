@@ -3,15 +3,35 @@ name: CI
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - ".github/FUNDING.yml"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "LICENSE"
+      - "SECURITY.md"
+      - "docs/**"
   pull_request:
     branches: [main, master]
+    paths-ignore:
+      - ".github/FUNDING.yml"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "LICENSE"
+      - "SECURITY.md"
+      - "docs/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -22,7 +42,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Ruff
-        run: python -m pip install ruff
+        run: python -m pip install "ruff==0.16.5"
 
       - name: Lint Python files
         # Ruff's default excludes already cover .git, __pycache__, .ruff_cache,
@@ -32,6 +52,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

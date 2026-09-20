@@ -3,8 +3,22 @@ name: Security
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - ".github/FUNDING.yml"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "LICENSE"
+      - "SECURITY.md"
+      - "docs/**"
   pull_request:
     branches: [main, master]
+    paths-ignore:
+      - ".github/FUNDING.yml"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "LICENSE"
+      - "SECURITY.md"
+      - "docs/**"
   schedule:
     # Run every Monday at 05:00 UTC.
     - cron: "0 5 * * 1"
@@ -13,10 +27,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
 jobs:
   bandit:
     name: Bandit (Python Security Linting)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -59,6 +78,7 @@ jobs:
   pip-audit:
     name: pip-audit (Dependency Vulnerabilities)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -98,6 +118,7 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     permissions:
       contents: read

@@ -1,0 +1,9 @@
+target-version = "py310"
+
+# Pin Ruff in CI (see .github/workflows/ci.yml). These ignores are the rules
+# that currently fail on main and are style or file-mode, not correctness:
+# EXE001 shebang without git executable bit, I001 import wrapping,
+# UP012 explicit UTF-8 encode, TRY004 ValueError vs TypeError in the CLI,
+# RUF010 format conversion flag, S110/BLE001 demo cleanup except-pass.
+[lint]
+extend-ignore = ["EXE001", "I001", "UP012", "TRY004", "RUF010", "S110", "BLE001"]

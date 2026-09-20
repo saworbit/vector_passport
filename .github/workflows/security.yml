@@ -65,7 +65,7 @@ jobs:
             --output bandit-results.json
 
       - name: Upload Bandit report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always() && hashFiles('bandit-results.json') != ''
         with:
           name: bandit-results
@@ -105,7 +105,7 @@ jobs:
             --output pip-audit-results.json
 
       - name: Upload pip-audit report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always() && hashFiles('pip-audit-results.json') != ''
         with:
           name: pip-audit-results
